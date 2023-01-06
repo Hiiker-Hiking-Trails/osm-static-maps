@@ -45,7 +45,7 @@ class Browser {
   }
   async launch() {
     return puppeteer.launch({
-      args: [...chrome.args, "--no-sandbox", "--disable-setuid-sandbox"],
+      args: [...chrome.args, "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
       defaultViewport: chrome.defaultViewport,
       executablePath: await chrome.executablePath,
       headless: true,
