@@ -1,3 +1,50 @@
+# 4.0.2
+
+Fix vector map labels
+
+ - Fix vector map labels not being rendered with 100% opacity
+
+# 4.0.1
+
+Fix vectorserverUrl
+
+ - Fix vectorserverUrl option was never returning the image
+ - Change equal default zoom for vector and raster tiles 
+
+# 4.0.0
+
+Change commonjs to nodejs modules
+
+ - **Breaking**: Change commonjs to nodejs modules
+ - Upgrade all dependencies to latest versions
+ - Fix imagemin missing binary
+ - Change oxipng compression to level 0
+
+# 3.11.2
+
+Improve docker files
+
+ - Add prod config without volumes and autoreload
+
+# 3.11.1
+
+Better dependencies pinning
+
+ - Uningnored package-lock.json to better pin dependencies
+
+# 3.11.0
+
+Improve speed
+
+ - Speed up results:
+    - Add cache to resolve faster tilesets in sample-server
+    - Correct default tile url to use https to avoid redirection
+    - Remove unnecessary network wait. Change it to wait for map load event
+    - Remove tile fade-in effect to be able to resolve earlier
+ - Upgrade all dependencies to latest versions
+ - Removed not-working heroku demo
+ - Removed validation that broke the /dynamic endpoint
+
 # 3.10.3
 
 Support AWS functions hotfix

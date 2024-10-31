@@ -1,13 +1,18 @@
-const express = require("express"),
-  http = require("http"),
-  osmsm = require("./lib.js");
+import express, { json } from "express";
+import { createServer } from "http";
+import osmsm from "./lib.js";
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 // app.set("port", process.env.PORT || 3000);
 app.set("views", __dirname + "/lib");
 app.set("view engine", "handlebars");
 app.set("view options", { layout: false });
-app.use(express.json({ limit: "50mb" }));
+app.use(json({ limit: "50mb" }));
 
 app.use((req, res, next) => {
   const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
@@ -33,22 +38,6 @@ app.use((req, res, next) => {
   next();
 });
 
-
-function htmlEscape(text) {
-  return text.replace(/&/g, '&amp;').
-  replace(/</g, '&lt;').
-  replace(/"/g, '&quot;').
-  replace(/'/g, '&#039;');
-}
-
-function sanitize(params) {
-  let result = {}
-  for (let [key, value] of Object.entries(params)) {
-      result[key] = htmlEscape(value)
-  }
-  return result;
-}
-
 app.get("/health", (req, res) => res.sendStatus(200));
 
 const handler = (res, params) => {
@@ -71,13 +60,11 @@ app.get("/", (req, res) => handler(res, req.query));
 app.post("/", (req, res) => handler(res, req.body));
 
 app.get("/dynamic", (req, res) => {
-  var sanitized = sanitize(req.query)
-  handler(res, { ...sanitized, renderToHtml: true })
+  handler(res, { ...req.query, renderToHtml: true })
 })
 
 app.post("/dynamic", (req, res) => {
-  var sanitized = sanitize(req.body)
-  handler(res, { ...sanitized, renderToHtml: true })
+  handler(res, { ...req.body, renderToHtml: true })
 })
 
-module.exports = http.createServer(app);
+export default createServer(app);
