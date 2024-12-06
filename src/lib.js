@@ -10,7 +10,7 @@ let puppeteer;
 
 if (process.env.AWS_LAMBDA_FUNCTION_VERSION) {
   // running on the Vercel platform.
-  chrome = import("chrome-aws-lambda");
+  chrome = await import("chrome-aws-lambda");
   puppeteer = (await import("puppeteer-core")).default;
 } else {
   // running locally.
@@ -21,8 +21,7 @@ function getDep(nodeModulesFile, binary = false) {
   const abspath = fileURLToPath(import.meta.resolve(nodeModulesFile));
   if (binary) {
     return new Buffer.from(readFileSync(abspath), 'binary').toString('base64');
-  }
-  else {
+  } else {
     return readFileSync(abspath, 'utf8');
   }
 }
@@ -110,51 +109,49 @@ function httpGet(url) {
 
 process.on("warning", (e) => console.warn(e.stack));
 
-
 // add network cache to cache tiles
 const cache = {};
 async function configCache(page) {
   await page.setRequestInterception(true);
 
   page.on('request', async (request) => {
-      const url = request.url();
-      if (cache[url] && cache[url].expires > Date.now()) {
-          await request.respond(cache[url]);
-          return;
-      }
-      request.continue();
+    const url = request.url();
+    if (cache[url] && cache[url].expires > Date.now()) {
+      await request.respond(cache[url]);
+      return;
+    }
+    request.continue();
   });
   
   page.on('response', async (response) => {
-      const url = response.url();
-      const headers = response.headers();
-      const cacheControl = headers['cache-control'] || '';
-      const maxAgeMatch = cacheControl.match(/max-age=(\d+)/);
-      const maxAge = maxAgeMatch && maxAgeMatch.length > 1 ? parseInt(maxAgeMatch[1], 10) : 0;
-      if (maxAge) {
-          if (cache[url] && cache[url].expires > Date.now()) return;
-  
-          let buffer;
-          try {
-              buffer = await response.buffer();
-          } catch (error) {
-              // some responses do not contain buffer and do not need to be catched
-              return;
-          }
-  
-          cache[url] = {
-              status: response.status(),
-              headers: response.headers(),
-              body: buffer,
-              expires: Date.now() + (maxAge * 1000),
-          };
+    const url = response.url();
+    const headers = response.headers();
+    const cacheControl = headers['cache-control'] || '';
+    const maxAgeMatch = cacheControl.match(/max-age=(\d+)/);
+    const maxAge = maxAgeMatch && maxAgeMatch.length > 1 ? parseInt(maxAgeMatch[1], 10) : 0;
+    if (maxAge) {
+      if (cache[url] && cache[url].expires > Date.now()) return;
+
+      let buffer;
+      try {
+        buffer = await response.buffer();
+      } catch (error) {
+        // some responses do not contain buffer and do not need to be cached
+        return;
       }
+
+      cache[url] = {
+        status: response.status(),
+        headers: response.headers(),
+        body: buffer,
+        expires: Date.now() + (maxAge * 1000),
+      };
+    }
   });
 }
 
 export default function(options) {
   return new Promise(function(resolve, reject) {
-    // TODO: validate options to avoid template injection
     options = options || {};
     options.geojson = (options.geojson && (typeof options.geojson === 'string' ? options.geojson : JSON.stringify(options.geojson))) || '';
     options.geojsonfile = options.geojsonfile || '';
@@ -177,15 +174,13 @@ export default function(options) {
     options.haltOnConsoleError = !!options.haltOnConsoleError;
 
     (async () => {
-
       if (options.geojsonfile) {
         if (options.geojson) {
           throw new Error(`Only one option allowed: 'geojsonfile' or 'geojson'`)
         }
         if (options.geojsonfile.startsWith("http://") || options.geojsonfile.startsWith("https://")) {
           options.geojson = await httpGet(options.geojsonfile)
-        }
-        else {
+        } else {
           options.geojson = readFileSync(
             options.geojsonfile == "-"
               ? process.stdin.fd
@@ -201,18 +196,21 @@ export default function(options) {
         return resolve(html);
       }
 
-      const page = await browser.getPage();
-      await configCache(page);
+      let page;
       try {
-        page.on('error', function (err) { reject(err.toString()) })
-        page.on('pageerror', function (err) { reject(err.toString()) })
+        page = await browser.getPage();
+        await configCache(page);
+
+        page.on('error', (err) => reject(err.toString()));
+        page.on('pageerror', (err) => reject(err.toString()));
         if (options.haltOnConsoleError) {
-          page.on('console', function (msg) {
+          page.on('console', (msg) => {
             if (msg.type() === "error") {
               reject(JSON.stringify(msg));
             }
-          })
+          });
         }
+
         await page.setViewport({
           width: Number(options.width),
           height: Number(options.height)
@@ -231,43 +229,40 @@ export default function(options) {
           const imagemin = (await import("imagemin")).default;
           const imageminJpegtran = (await import("imagemin-jpegtran")).default;
           const imageminOptipng = (await import("imagemin-optipng")).default;
-          const plugins = []
+          const plugins = [];
           if (options.type === 'jpeg') {
             plugins.push(imageminJpegtran());
           } else {
             plugins.push(imageminOptipng());
           }
-          (async () => {
-            resolve(await imagemin.buffer(
-              Buffer.from(imageBinary),
-              {
-                plugins,
-              }
-            ))
-          })();
+
+          const optimizedBuffer = await imagemin.buffer(
+            Buffer.from(imageBinary),
+            { plugins }
+          );
+          resolve(optimizedBuffer);
+
+        } else if (options.oxipng) {
+          const child = spawn('/root/.cargo/bin/oxipng', ['-o0', '-s', '-']);
+          child.stdin.on('error', function() {});
+          child.stdin.write(imageBinary);
+          child.stdin.end();
+          let newimg = [];
+          child.stdout.on('data', data => newimg.push(data));
+          child.on('close', () => resolve(Buffer.concat(newimg)));
+          child.on('error', e => reject(e.toString()));
         } else {
-          if (options.oxipng) {
-            const child = spawn('/root/.cargo/bin/oxipng', ['-o0', '-s', '-']);
-            child.stdin.on('error', function() {});
-            child.stdin.write(imageBinary);
-            child.stdin.end();
-            let newimg = [];
-            child.stdout.on('data', data => newimg.push(data));
-            child.on('close', () => resolve(Buffer.concat(newimg)));
-            child.on('error', e => reject(e.toString()));
-          } else {
-            resolve(imageBinary);
-          }
+          resolve(imageBinary);
         }
 
+      } catch(e) {
+        reject(e);
+      } finally {
+        if (page && !page.isClosed()) {
+          await page.close();
+        }
       }
-      catch(e) {
-        page.close();
-        console.log("PAGE CLOSED with err" + e);
-        throw(e);
-      }
-      page.close();
 
-    })().catch(reject)
+    })().catch(reject);
   });
 };
